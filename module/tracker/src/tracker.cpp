@@ -1,11 +1,14 @@
 #include "tracker.h"
 using namespace cv;
 
-void Tracker::update(const Mat& img) {
-    std::cout << std::setw(100) << "frame no: " << frameno_++ << std::endl;
+void Tracker::update(const Mat& img, const int& frameno) {
+    // std::cout << "frame No." << frameno << std::endl;
+    scalex_ = img.cols / width_;
+    scaley_ = img.rows / height_;
+
     float constexpr IoUth = 0.1;
     auto objs = engine_.forward(img);
-    if (frameno_ == 1) {
+    if (frameno == 1) {
         objects_ = objs;
         return;
     }
@@ -14,7 +17,7 @@ void Tracker::update(const Mat& img) {
     for (auto& itr : objs) {
         auto del = true;
         for (auto& jtr : objects_) {
-            if (calcBoxIoU(itr, jtr) > IoUth) {
+            if (calcSegIoU(itr, jtr) > IoUth) {
                 del = false;
                 break;
             }
@@ -29,7 +32,7 @@ void Tracker::update(const Mat& img) {
     for (auto& itr : objects_) {
         auto del = true;
         for (auto& jtr : objs) {
-            if (calcBoxIoU(itr, jtr) > IoUth) {
+            if (calcSegIoU(itr, jtr) > IoUth) {
                 del = false;
                 break;
             }
@@ -51,7 +54,7 @@ void Tracker::update(const Mat& img) {
             if (j >= newMatch.size())
                 break;
 
-            cost(i, j) = (int)(10000 * calcBoxIoU(prevMatch[i], newMatch[j]));
+            cost(i, j) = (int)(10000 * calcSegIoU(prevMatch[i], newMatch[j]));
         }
     }
     int d = 0, n = 0, u = 0;
@@ -65,7 +68,7 @@ void Tracker::update(const Mat& img) {
             newMatch[j].undetCounter = 0;
             newMatch[j].ObjectID = prevMatch[i].ObjectID;
             newMatch[j].matchCounter = prevMatch[i].matchCounter + 1;
-            if (newMatch[j].matchCounter >= 3 && newMatch[j].ObjectID == -1) {
+            if (newMatch[j].matchCounter >= 1 && newMatch[j].ObjectID == -1) {
                 newMatch[j].ObjectID = maxObjectID_++;
             }
 
@@ -83,14 +86,27 @@ void Tracker::update(const Mat& img) {
             }
         }
     }
-    std::cout << std::setw(100) << "undetected: " << d << ", new: " << n << ", matched: " << u << std::endl;
+    // std::cout << std::left << "undetected: " << d << ", new: " << n << ", matched: " << u << std::endl;
 
     objects_ = res;
+    if (!ofs_)
+        return;
+    for (const auto& el : objects_) {
+        if (el.undetCounter != 0 || el.ObjectID == -1)
+            continue;
+        ofs_ << format("%d, %d, %.3f, %.3f, %.3f, %.3f, -1, -1, -1", frameno, el.ObjectID, (float)el.xmin * scalex_, (float)el.ymin * scaley_, (float)(el.xmax - el.xmin) * scalex_, (float)(el.ymax - el.ymin) * scaley_) << std::endl;
+    }
 }
 
 Mat Tracker::show(const cv::Mat& img) {
     Mat imgr;
-    resize(img, imgr, cv::Size(), (float)width_ / img.cols, (float)width_ / img.rows);
+    auto rar = width_ != height_;
+    resize(img, imgr, cv::Size(), (float)width_ / img.cols, (float)height_ / img.rows);
+    if (rar) {
+        auto padl = std::max(imgr.cols, imgr.rows) - imgr.cols;
+        auto padb = std::max(imgr.cols, imgr.rows) - imgr.rows;
+        copyMakeBorder(imgr, imgr, 0, padb, padl, 0, BORDER_CONSTANT, Scalar::all(255));
+    }
     auto mask = Mat(imgr.size(), img.type(), Scalar::all(0));
     for (auto& el : objects_) {
         if (el.undetCounter != 0 || el.ObjectID == -1)

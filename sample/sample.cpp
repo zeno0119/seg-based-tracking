@@ -12,14 +12,27 @@ std::string format(const std::string& fmt, Args... args) {
     std::snprintf(&buf[0], len + 1, fmt.c_str(), args...);
     return std::string(&buf[0], &buf[0] + len);
 }
-int main() {
+
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        std::cerr << "Invalid argment" << std::endl;
+        std::cerr << "Usage: sample <resulution> <sequence>" << std::endl;
+    }
+    auto resol = std::stoi(argv[1]);
+    auto sequence = argv[2];
     std::cout << "Start tracking" << std::endl;
-    std::string path = "/home/zeno0119/Desktop/yolo/yolov8n-seg.onnx";
-    std::string p = "/movie/MOT17/train/MOT17-11/img/%06d.jpg";
-    Tracker t(path, 320, 320);
+    std::string path = "/home/zeno0119/Desktop/yolo/yolov8n-seg%3d.onnx";
+    std::string p = "/movie/MOT17/train/%s/img/%06d.jpg";
+    std::string outpath = "/movie/yoloResult/x%3d/%s/%06d.jpg";
+    std::string outputpath = "/movie/yoloResult/x%3d/%s.txt";
+    auto nnpath = format(path, resol);
+    std::cout << "read net from: " << nnpath << std::endl;
+    std::vector<int64_t> v_duration;
+    Tracker t(nnpath, resol, resol, format(outputpath, resol, sequence));
     for (int i = 1;; i++) {
-        auto l = format(p, i);
-        std::cout << std::setw(100) << l << std::endl;
+        auto l = format(p, sequence, i);
+        auto outl = format(outpath, resol, sequence, i);
+        // std::cout << std::left << l << std::endl;
         auto img = cv::imread(l);
         auto t1 = std::chrono::steady_clock::now();
 
@@ -27,15 +40,26 @@ int main() {
             std::cerr << "Image Read Error" << std::endl;
             break;
         }
-        t.update(img);
+        t.update(img, i);
         auto t2 = std::chrono::steady_clock::now();
         auto du = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
-        printf("duration: %lf ms.", (double)du / 1000.0);
+        v_duration.push_back(du);
+        // printf("duration: %lf ms.\n", (double)du / 1000.0);
         auto res = t.show(img);
-        cv::imshow("result", res);
-        printf("\r\e[3A");
-        cv::waitKey(1);
+        cv::imwrite(outl, res);
+        // cv::imshow("result", res);
+        // printf("\r\e[4A");
+        // cv::waitKey(1);
     }
+    std::sort(v_duration.begin(), v_duration.end());
+    if (v_duration.size() % 2 == 0) {
+        const auto s = v_duration.size();
+        std::cout << "mean of duration: " << (float)((v_duration[s / 2] + v_duration[s / 2 - 1]) / 2) / 1000 << "ms" << std::endl;
+    } else {
+        std::cout << "mean of duration: " << (float)(v_duration[v_duration.size() / 2]) / 1000 << "ms" << std::endl;
+    }
+    auto logpath = "/home/zeno0119/Desktop/yolo/logx480.dat";
+    t.pushLog(logpath);
     return 0;
 }

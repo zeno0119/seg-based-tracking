@@ -1,7 +1,9 @@
 #ifndef __INFERENCE_ENGINE_H__
 #define __INFERENCE_ENGINE_H__
 #include <chrono>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <opencv2/core.hpp>
 #include <opencv2/dnn/dnn.hpp>
@@ -21,6 +23,7 @@ struct SegMap : public std::map<signed, signed> {
     // remove segment [l, r]
     void remove(signed l, signed r);
     auto getAll() const noexcept;
+    auto NOT() const noexcept;
 };
 
 struct Object {
@@ -39,19 +42,24 @@ struct Object {
 
 float calcBoxIoU(const Object& a, const Object& b);
 
+float calcSegIoU(const Object& a, const Object& b);
+
 class InferenceEngine {
   private:
     decltype(cv::dnn::readNetFromONNX("path")) engine_;
-    int size_;
+    int width_, height_;
     int sWidth_;
+    bool retainAspectRate_;
+    std::vector<int64_t> pre, inf, post;
 
   public:
-    InferenceEngine(const std::string& path, int width) : size_(width), sWidth_(4) {
+    InferenceEngine(const std::string& path, int width, int height) : width_(width), height_(height), sWidth_(4), retainAspectRate_(width != height) {
         engine_ = cv::dnn::readNetFromONNX(path);
         engine_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
         engine_.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
     }
     std::vector<Object> forward(const cv::Mat& img);
+    void pushLog(std::string ofs);
 };
 
 #endif

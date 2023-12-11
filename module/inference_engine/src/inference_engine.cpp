@@ -35,6 +35,32 @@ auto SegMap::getAll() const noexcept {
     return *this;
 }
 
+auto OR(const SegMap& a, const SegMap& b) {
+    auto res = a;
+    for (const auto& el : a.getAll()) {
+        res.insert(el.first, el.second);
+    }
+    return res;
+}
+
+auto SegMap::NOT() const noexcept {
+    SegMap res;
+    res.insert(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
+    for (const auto& el : *this) {
+        res.remove(el.first, el.second);
+    }
+    return res;
+}
+
+auto AND(const SegMap& a, const SegMap& b) noexcept {
+    auto res = a;
+
+    for (const auto& el : b.NOT().getAll()) {
+        res.remove(el.first, el.second);
+    }
+    return res;
+}
+
 float calcBoxIoU(const Object& a, const Object& b) {
     if (a.xmin > b.xmax || b.xmin > a.xmax)
         return 0;
@@ -50,13 +76,46 @@ float calcBoxIoU(const Object& a, const Object& b) {
     return sab / (sa + sb - sab);
 }
 
+float calcSegIoU(const Object& a, const Object& b) {
+    if (a.xmin > b.xmax || b.xmin > a.xmax)
+        return 0;
+    if (a.ymin > b.ymax || b.ymin > a.ymax)
+        return 0;
+
+    float sa = 0, sb = 0, sab = 0;
+    for (const auto& el : a.seg) {
+        for (const auto& e : el.getAll()) {
+            sa += 4 * (e.second - e.first);
+        }
+    }
+    for (const auto& el : b.seg) {
+        for (const auto& e : el.getAll()) {
+            sb += 4 * (e.second - e.first);
+        }
+    }
+
+    int start = std::max(a.xmin, b.xmin) / 4;
+    int end = std::min(a.xmax, b.xmax) / 4;
+    for (size_t i = start; i < end; i++) {
+        for (const auto& el : AND(a.seg[i - a.xmin / 4], b.seg[i - b.xmin / 4]).getAll()) {
+            sab += 4 * (el.second - el.first);
+        }
+    }
+    return sab / (sa + sb - sab);
+}
+
 std::vector<Object> InferenceEngine::forward(const Mat& img) {
     auto t1 = std::chrono::steady_clock::now();
     float constexpr IoUth = 0.45;
-    float constexpr confth = 0.25;
+    float constexpr confth = 0.15;
     CV_Assert(img.type() == CV_8UC3 || img.type() == CV_8UC1);
-    cv::Mat imgr;
-    cv::resize(img, imgr, Size(), (float)size_ / img.cols, (float)size_ / img.rows);
+    Mat imgr;
+    resize(img, imgr, Size(), (float)width_ / img.cols, (float)height_ / img.rows);
+    if (retainAspectRate_) {
+        auto padl = std::max(imgr.cols, imgr.rows) - imgr.cols;
+        auto padb = std::max(imgr.cols, imgr.rows) - imgr.rows;
+        copyMakeBorder(imgr, imgr, 0, padb, padl, 0, BORDER_CONSTANT, Scalar::all(0));
+    }
     Mat blob;
     dnn::blobFromImage(imgr, blob, 1.0 / 255.0);
     engine_.setInput(blob);
@@ -132,12 +191,24 @@ std::vector<Object> InferenceEngine::forward(const Mat& img) {
         el.setSeg(s);
     }
     auto t6 = std::chrono::steady_clock::now();
-    // auto duration12 = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    // auto duration23 = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
-    // auto duration34 = std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count();
-    // auto duration45 = std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count();
-    // auto duration56 = std::chrono::duration_cast<std::chrono::microseconds>(t6 - t5).count();
+    auto duration12 = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    auto duration23 = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+    auto duration36 = std::chrono::duration_cast<std::chrono::microseconds>(t6 - t3).count();
+    pre.push_back(duration12);
+    inf.push_back(duration23);
+    post.push_back(duration36);
     // printf("pre: %lf, inf: %lf, box: %lf, nms: %lf, segm: %lf\n", duration12 / 1000.0, duration23 / 1000.0, duration34 / 1000.0, duration45 / 1000.0, duration56 / 1000.0);
 
     return objs;
+}
+
+void InferenceEngine::pushLog(std::string path) {
+    std::ofstream ofs(path);
+    if (!ofs) {
+        std::cerr << "file not found" << std::endl;
+        return;
+    }
+    for (size_t i = 0; i < pre.size(); i++) {
+        ofs << pre[i] << " " << inf[i] << " " << post[i] << std::endl;
+    }
 }
