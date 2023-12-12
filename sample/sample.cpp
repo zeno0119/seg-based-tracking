@@ -23,12 +23,13 @@ int main(int argc, char* argv[]) {
     std::cout << "Start tracking" << std::endl;
     std::string path = "/home/zeno0119/Desktop/yolo/yolov8n-seg%3d.onnx";
     std::string p = "/movie/MOT17/train/%s/img/%06d.jpg";
-    std::string outpath = "/movie/yoloResult/x%3d/%s/%06d.jpg";
-    std::string outputpath = "/movie/yoloResult/x%3d/%s.txt";
+    std::string outpath = "/movie/yoloResult/aspx%3d/%s/%06d.jpg";
+    std::string outputpath = "/movie/yoloResult/aspx%3d/%s.txt";
     auto nnpath = format(path, resol);
     std::cout << "read net from: " << nnpath << std::endl;
     std::vector<int64_t> v_duration;
-    Tracker t(nnpath, resol, resol, format(outputpath, resol, sequence));
+    auto resoly = (float)resol / 16.0 * 9.0;
+    Tracker t(nnpath, resol, resoly, format(outputpath, resol, sequence));
     for (int i = 1;; i++) {
         auto l = format(p, sequence, i);
         auto outl = format(outpath, resol, sequence, i);

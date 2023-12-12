@@ -28,9 +28,9 @@ struct SegMap : public std::map<signed, signed> {
 
 struct Object {
     int undetCounter, ObjectID, matchCounter;
-    int cls;
     int xmin, xmax, ymin, ymax;
     float conf;
+    int cls;
     std::vector<SegMap> seg;
     Object(float xmi, float xma, float ymi, float yma, float c, int cls_) : undetCounter(0), ObjectID(-1), matchCounter(0),
                                                                             xmin(xmi), xmax(xma), ymin(ymi), ymax(yma), conf(c), cls(cls_) {
@@ -49,10 +49,10 @@ class InferenceEngine {
     decltype(cv::dnn::readNetFromONNX("path")) engine_;
     int width_, height_;
     int sWidth_;
-    bool retainAspectRate_;
     std::vector<int64_t> pre, inf, post;
 
   public:
+    bool retainAspectRate_;
     InferenceEngine(const std::string& path, int width, int height) : width_(width), height_(height), sWidth_(4), retainAspectRate_(width != height) {
         engine_ = cv::dnn::readNetFromONNX(path);
         engine_.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);

@@ -131,19 +131,23 @@ std::vector<Object> InferenceEngine::forward(const Mat& img) {
     // xyxyと仮定してやる
     auto bbsp = (float*)bbs.data;
     std::vector<Object> objs;
+    float max_conf = 0;
+    float max_idx = -1;
     for (size_t i = 0; i < sizes[2]; i++) {
         for (size_t j = 4; j < 36; j++) {
             auto cls = bbsp[j * sizes[2] + i];
-            if (cls < confth)
-                continue;
-            else {
-                auto xc = bbsp[0 * sizes[2] + i];
-                auto yc = bbsp[1 * sizes[2] + i];
-                auto w = bbsp[2 * sizes[2] + i];
-                auto h = bbsp[3 * sizes[2] + i];
-                objs.push_back(Object(xc - w / 2, xc + w / 2, yc - h / 2, yc + h / 2, cls, j - 4));
-                break;
+            if (cls > max_conf) {
+                max_conf = cls;
+                max_idx = j;
             }
+        }
+
+        if (max_conf > confth && max_idx != -1) {
+            auto xc = bbsp[0 * sizes[2] + i];
+            auto yc = bbsp[1 * sizes[2] + i];
+            auto w = bbsp[2 * sizes[2] + i];
+            auto h = bbsp[3 * sizes[2] + i];
+            objs.push_back(Object(xc - w / 2, xc + w / 2, yc - h / 2, yc + h / 2, max_conf, max_idx - 4));
         }
     }
     auto t4 = std::chrono::steady_clock::now();
@@ -170,6 +174,8 @@ std::vector<Object> InferenceEngine::forward(const Mat& img) {
     bool first = true;
     auto segp = (float*)seg.data;
     for (auto& el : objs) {
+        if (el.cls != 0)
+            continue;
         std::vector<SegMap> s;
         for (size_t x = el.xmin / 4; x < el.xmax / 4; x++) {
             auto tmp = SegMap();

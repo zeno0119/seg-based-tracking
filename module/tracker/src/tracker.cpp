@@ -3,9 +3,12 @@ using namespace cv;
 
 void Tracker::update(const Mat& img, const int& frameno) {
     // std::cout << "frame No." << frameno << std::endl;
-    scalex_ = img.cols / width_;
-    scaley_ = img.rows / height_;
-
+    scalex_ = (float)img.cols / width_;
+    if (engine_.retainAspectRate_) {
+        scaley_ = (float)img.rows / height_;
+    } else {
+        scaley_ = (float)img.rows / width_;
+    }
     float constexpr IoUth = 0.1;
     auto objs = engine_.forward(img);
     if (frameno == 1) {
@@ -46,8 +49,8 @@ void Tracker::update(const Mat& img, const int& frameno) {
 
     auto msize = std::max(prevMatch.size(), newMatch.size());
     dlib::matrix<int> cost(msize, msize);
-    for (int i = 0; i < msize; i++) {
-        for (int j = 0; j < msize; j++) {
+    for (size_t i = 0; i < msize; i++) {
+        for (size_t j = 0; j < msize; j++) {
             cost(i, j) = 0;
             if (i >= prevMatch.size())
                 break;
@@ -60,8 +63,8 @@ void Tracker::update(const Mat& img, const int& frameno) {
     int d = 0, n = 0, u = 0;
     auto assignment = dlib::max_cost_assignment(cost);
     std::vector<Object> res;
-    for (int i = 0; i < assignment.size(); i++) {
-        auto j = assignment[i];
+    for (size_t i = 0; i < assignment.size(); i++) {
+        size_t j = assignment[i];
         if (i < prevMatch.size() && j < newMatch.size()) {
             // matched
             u += 1;
@@ -113,7 +116,7 @@ Mat Tracker::show(const cv::Mat& img) {
             continue;
         auto tl = Point2d((int)el.xmin, (int)el.ymin);
         auto br = Point2d((int)el.xmax, (int)el.ymax);
-        auto rect = Rect((int)el.xmin, (int)el.ymin, (int)(el.xmax - el.xmin), (int)(el.ymax - el.ymin));
+        auto rect = Rect(tl, br);
         rectangle(mask, rect, Scalar::all(255));
         auto id = std::to_string(el.ObjectID);
         putText(mask, id, tl, 1, 0.5, Scalar::all(255));
